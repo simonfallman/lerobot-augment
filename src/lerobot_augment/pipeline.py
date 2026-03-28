@@ -12,6 +12,10 @@ from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 from lerobot_augment.augmentations import build_augmentation_chain
 from lerobot_augment.augmentations.temporal import TemporalSubsampleAugmentation
+from lerobot_augment.augmentations.filtering import (
+    filter_by_action_variance,
+    trim_idle_frames,
+)
 from lerobot_augment.utils import (
     AUTO_MANAGED_KEYS,
     get_image_keys,
@@ -127,7 +131,16 @@ def run_pipeline(args: argparse.Namespace) -> None:
     min_len = args.min_episode_length
     max_len = args.max_episode_length
 
+    # Filtering summary
+    if args.min_action_variance > 0:
+        print(f"Action variance filter: min={args.min_action_variance}")
+    if args.trim_idle:
+        print(f"Idle trimming: threshold={args.trim_idle_threshold}")
+
     total_written = 0
+    skipped_variance = 0
+    skipped_length = 0
+    trimmed_count = 0
     num_episodes = src.num_episodes
     print()
 
@@ -137,12 +150,27 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
         # Filter by length
         if min_len > 0 and ep_length < min_len:
+            skipped_length += 1
             continue
         if max_len > 0 and ep_length > max_len:
+            skipped_length += 1
             continue
 
         frames = read_episode_frames(src, local_idx)
         task = get_task_for_episode(src, local_idx)
+
+        # Filter by action variance
+        if args.min_action_variance > 0:
+            if not filter_by_action_variance(frames, args.min_action_variance):
+                skipped_variance += 1
+                continue
+
+        # Trim idle frames
+        if args.trim_idle:
+            original_len = len(frames)
+            frames = trim_idle_frames(frames, threshold=args.trim_idle_threshold)
+            if len(frames) < original_len:
+                trimmed_count += 1
 
         # Write originals if requested
         if args.include_originals:
@@ -175,6 +203,14 @@ def run_pipeline(args: argparse.Namespace) -> None:
                     if len(subsampled) >= 2:
                         write_episode(dst, subsampled, image_keys, task)
                         total_written += 1
+
+    # Print filtering summary
+    if skipped_length > 0:
+        print(f"\n  Skipped {skipped_length} episodes (length filter)")
+    if skipped_variance > 0:
+        print(f"  Skipped {skipped_variance} episodes (low action variance)")
+    if trimmed_count > 0:
+        print(f"  Trimmed idle frames from {trimmed_count} episodes")
 
     # Finalize
     print(f"\nFinalizing dataset ({total_written} episodes written)...")

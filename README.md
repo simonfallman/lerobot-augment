@@ -1,150 +1,168 @@
 # lerobot-augment
 
-A CLI tool for offline augmentation of [LeRobot v3](https://huggingface.co/docs/lerobot/en/lerobot-dataset-v3) datasets. It reads a source dataset from the Hugging Face Hub, applies configurable visual and trajectory augmentations, writes a new dataset, and uploads it back to the Hub.
+A CLI tool for offline augmentation and filtering of [LeRobot v3](https://huggingface.co/docs/lerobot/en/lerobot-dataset-v3) datasets. It reads a source dataset from the Hugging Face Hub, applies configurable visual transforms, trajectory augmentations, and quality filters, writes a new dataset, and uploads it back to the Hub.
 
-## Why offline augmentation?
+## What it does
 
-LeRobot already supports on-the-fly image transforms during training. This tool fills a different need:
+```
+Source dataset (HF Hub) → Filter → Trim → Augment → Multiply → New dataset (HF Hub)
+```
 
-- **Shareable**: Augmented datasets are standalone HF datasets anyone can load
-- **Reproducible**: Deterministic seeding means identical outputs given the same seed
-- **Framework-agnostic**: Consumers don't need LeRobot's transform pipeline
-- **Composable**: Mix originals + augmented data in a single dataset
+**The pipeline:**
+1. Downloads a LeRobot v3 dataset from HuggingFace Hub
+2. **Filters** out bad episodes (low action variance = robot barely moved)
+3. **Trims** idle frames from the start/end of each episode
+4. **Augments** with visual transforms (color, blur, occlusion) and trajectory modifications (noise, smoothing)
+5. **Multiplies** by creating N augmented copies per episode
+6. Uploads the result and prints a visualizer link
+
+## Why?
+
+Recording robot demonstrations is expensive. If you have 50 recordings of "pick up the cup," augmentation turns them into 200+ varied episodes — with different lighting, slight trajectory variations, and cleaned-up data — making trained models more robust without recording a single new demo.
 
 ## Installation
 
 ```bash
 # Requires Python >= 3.10
-pip install -e .
-```
-
-Or with [uv](https://docs.astral.sh/uv/) (recommended):
-
-```bash
 uv venv --python 3.12 .venv
 source .venv/bin/activate
 uv pip install -e .
 ```
 
+Or just `pip install -e .` if you don't use [uv](https://docs.astral.sh/uv/).
+
 ## Quick start
 
 ```bash
-# Augment with color jitter + action noise, include originals for dataset mixing
+# Log in to HuggingFace first
+python3 -c "from huggingface_hub import login; login()"
+
+# Augment with color jitter + action noise, include originals
 lerobot-augment \
   --source-repo-id lerobot/aloha_static_cups_open \
   --output-repo-id your-username/aloha_cups_augmented \
   --color-jitter \
   --action-noise \
+  --trim-idle \
   --include-originals \
   --push-to-hub
 ```
 
-This will:
-1. Download the source dataset
-2. For each episode: copy the original + create an augmented version
-3. Upload the result to Hugging Face Hub
-4. Print a visualizer link
+Output:
+```
+Dataset uploaded: https://huggingface.co/datasets/your-username/aloha_cups_augmented
+Visualize: https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fyour-username%2Faloha_cups_augmented%2Fepisode_0
+```
 
-## Augmentation types
+## Live demo
 
-| Augmentation | Flag | What it does | Key parameters |
-|---|---|---|---|
-| **Color Jitter** | `--color-jitter` | Adjusts brightness, contrast, saturation, hue (consistent across frames in an episode) | `--cj-brightness 0.3` `--cj-contrast 0.3` `--cj-saturation 0.3` `--cj-hue 0.05` |
-| **Gaussian Blur** | `--gaussian-blur` | Applies random Gaussian blur (consistent per episode) | `--gb-kernel-size 5` `--gb-sigma-min 0.1` `--gb-sigma-max 2.0` |
-| **Random Erasing** | `--random-erasing` | Cutout-style occlusion patches (independent per frame) | `--re-p 0.3` `--re-scale-min 0.02` `--re-scale-max 0.15` |
-| **Action Noise** | `--action-noise` | Gaussian noise on action tensors for trajectory robustness | `--action-noise-std 0.01` |
-| **Temporal Subsample** | `--temporal-subsample` | Creates episodes at reduced frame rates (every Nth frame) | `--temporal-subsample-factors 2 3` |
+Augmented dataset on HuggingFace Hub: [simonfallman/aloha_cups_augmented](https://huggingface.co/datasets/simonfallman/aloha_cups_augmented)
+
+[View in visualizer](https://huggingface.co/spaces/lerobot/visualize_dataset?path=%2Fsimonfallman%2Faloha_cups_augmented%2Fepisode_0) — switch between episodes to compare original vs augmented.
+
+## Features
+
+### Augmentation (increase variation)
+
+| Type | Flag | What it does |
+|---|---|---|
+| **Color Jitter** | `--color-jitter` | Adjusts brightness, contrast, saturation, hue (consistent per episode to avoid flickering) |
+| **Gaussian Blur** | `--gaussian-blur` | Random blur (consistent per episode) |
+| **Random Erasing** | `--random-erasing` | Cutout-style occlusion patches (independent per frame) |
+| **Action Noise** | `--action-noise` | Gaussian noise on action tensors for trajectory robustness |
+| **Trajectory Smoothing** | `--smooth-trajectory` | Moving average on actions to reduce sensor noise |
+| **Temporal Subsample** | `--temporal-subsample` | Creates episodes at reduced frame rates |
+
+### Filtering (improve quality)
+
+| Type | Flag | What it does |
+|---|---|---|
+| **Action Variance Filter** | `--min-action-variance 0.001` | Removes episodes where the robot barely moved (stuck/failed demos) |
+| **Idle Trimming** | `--trim-idle` | Removes dead frames from start/end of episodes where robot sits still |
+| **Length Filter** | `--min-episode-length 50` | Removes episodes that are too short or too long |
+
+### Multiplying
+
+| Type | Flag | What it does |
+|---|---|---|
+| **Copies** | `--num-augmented-copies 3` | Creates N augmented variants per episode |
+| **Include Originals** | `--include-originals` | Keeps original episodes alongside augmented ones (dataset mixing) |
 
 ## Examples
 
-### Visual-only augmentation (3 copies per episode)
+### Clean up a noisy dataset (filter only, no augmentation)
+
+```bash
+lerobot-augment \
+  --source-repo-id lerobot/aloha_static_cups_open \
+  --output-repo-id your-username/aloha_cleaned \
+  --min-action-variance 0.0005 \
+  --trim-idle \
+  --min-episode-length 50 \
+  --include-originals \
+  --push-to-hub
+```
+
+### Heavy visual augmentation (3x dataset)
 
 ```bash
 lerobot-augment \
   --source-repo-id lerobot/aloha_static_cups_open \
   --output-repo-id your-username/aloha_visual_aug \
-  --color-jitter --gaussian-blur \
+  --color-jitter --cj-brightness 0.6 --cj-hue 0.1 \
+  --gaussian-blur \
+  --random-erasing --re-p 0.3 \
   --num-augmented-copies 3 \
   --push-to-hub
 ```
 
-### Action noise + originals for mixed training
+### Full pipeline (filter + trim + augment + multiply)
 
 ```bash
 lerobot-augment \
   --source-repo-id lerobot/aloha_static_cups_open \
-  --output-repo-id your-username/aloha_mixed \
+  --output-repo-id your-username/aloha_full \
+  --min-action-variance 0.0005 \
+  --trim-idle \
+  --color-jitter --cj-brightness 0.5 --cj-hue 0.08 \
   --action-noise --action-noise-std 0.02 \
-  --include-originals \
-  --push-to-hub
-```
-
-### Process only specific episodes
-
-```bash
-lerobot-augment \
-  --source-repo-id lerobot/aloha_static_cups_open \
-  --output-repo-id your-username/aloha_subset \
-  --episodes 0 1 2 \
-  --color-jitter \
-  --push-to-hub
-```
-
-### Full kitchen sink
-
-```bash
-lerobot-augment \
-  --source-repo-id lerobot/aloha_static_cups_open \
-  --output-repo-id your-username/aloha_full_aug \
-  --color-jitter --cj-brightness 0.4 --cj-hue 0.1 \
-  --gaussian-blur \
-  --random-erasing --re-p 0.2 \
-  --action-noise --action-noise-std 0.015 \
-  --temporal-subsample --temporal-subsample-factors 2 \
+  --smooth-trajectory \
   --include-originals \
   --num-augmented-copies 2 \
-  --min-episode-length 50 \
-  --seed 123 \
   --push-to-hub
 ```
 
 ## CLI reference
 
-```
-lerobot-augment --help
-```
+Run `lerobot-augment --help` for full details. Key arguments:
 
 | Argument | Default | Description |
 |---|---|---|
 | `--source-repo-id` | required | Source dataset on HF Hub |
 | `--output-repo-id` | required | Output dataset repo ID |
 | `--seed` | 42 | Random seed for reproducibility |
-| `--num-augmented-copies` | 1 | Augmented copies per episode |
-| `--include-originals` | false | Also include unaugmented episodes |
-| `--episodes` | all | Process only these episode indices |
-| `--min-episode-length` | 0 | Skip shorter episodes |
-| `--max-episode-length` | 0 | Skip longer episodes |
+| `--episodes` | all | Only process specific episode indices |
 | `--push-to-hub` | false | Upload result to HF Hub |
 | `--private` | false | Make uploaded dataset private |
 
 ## Design decisions
 
-- **Episode-level consistency**: Visual augmentations (color jitter, blur) sample parameters once per episode and apply them uniformly across all frames, preventing temporal flickering
-- **Independent erasing**: Random erasing is applied independently per frame because occlusions naturally vary frame-to-frame
-- **Deterministic seeding**: Each episode+copy combination gets a unique seed (`base_seed + ep_idx * 1000 + copy_idx`), ensuring reproducibility
-- **Offline materialization**: Writes a complete, standalone LeRobot v3 dataset rather than wrapping the original
+- **Episode-level consistency**: Visual augmentations (color jitter, blur) sample parameters once per episode, preventing temporal flickering across frames
+- **Deterministic seeding**: Each episode+copy gets a unique seed (`base_seed + ep_idx * 1000 + copy_idx`), ensuring reproducibility
+- **Filter before augment**: Bad episodes are removed before augmentation, so you don't waste time augmenting junk data
+- **Idle trimming preserves context**: Keeps one frame before motion starts and one after it ends, so the model still sees the transition
 
 ## How this was built (AI coding agents)
 
-This tool was built using **Claude Code** (Anthropic's AI coding agent). Here's how AI agents were utilized throughout development:
+This tool was built entirely using **Claude Code** (Anthropic's AI coding agent). Here's how:
 
-1. **Research phase**: Used Claude Code's web search and exploration agents to research the LeRobot v3 dataset format, the `LeRobotDataset` Python API (`create()`, `add_frame()`, `save_episode()`, `finalize()`, `push_to_hub()`), and robotics dataset augmentation best practices
-2. **Architecture design**: Claude Code planned the modular architecture (augmentation base class, episode-level processing, frame conversion pipeline) and identified key technical challenges (CHW→HWC image format conversion, auto-managed field exclusion, task metadata resolution)
-3. **Implementation**: Claude Code wrote all source files, iterating through API inspection (`inspect.signature`, `inspect.getsource`) to match the actual LeRobot v3 API exactly
-4. **Debugging**: When the initial implementation failed validation (wrong image tensor format, `next.done` shape mismatch), Claude Code diagnosed the root causes by inspecting the LeRobot source and fixed the frame conversion pipeline
-5. **End-to-end testing**: Claude Code ran the tool against `lerobot/aloha_static_cups_open`, verified correct video encoding, and validated the output dataset structure
+1. **Research phase**: Claude Code's web search and exploration agents researched the LeRobot v3 dataset format, the `LeRobotDataset` Python API, and robotics dataset augmentation best practices across academic papers and the LeRobot community
+2. **Architecture design**: Claude Code designed the modular architecture — augmentation base class with episode-level processing, frame format conversion pipeline (CHW float tensors → HWC uint8 numpy), and the filter-then-augment pipeline ordering
+3. **Implementation**: Claude Code wrote all source files, using `inspect.signature` and `inspect.getsource` on the installed LeRobot package to match the actual v3 API exactly (not just documentation)
+4. **Debugging**: When the initial implementation failed validation (wrong image tensor layout, `next.done` shape mismatch, multiprocessing stdin issues), Claude Code diagnosed root causes by reading LeRobot source and fixed each issue
+5. **End-to-end testing**: Claude Code ran the tool against `lerobot/aloha_static_cups_open`, verified video encoding, uploaded to HuggingFace Hub, and validated the visualizer link
 
-The entire tool — from research to working CLI — was built in a single Claude Code session.
+The entire tool — from research to working CLI with uploaded demo dataset — was built in a single Claude Code session.
 
 ## License
 

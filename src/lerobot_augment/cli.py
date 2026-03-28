@@ -78,9 +78,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Subsample factors (default: [2])",
     )
 
+    # Trajectory smoothing
+    parser.add_argument("--smooth-trajectory", action="store_true", help="Smooth action trajectories with moving average")
+    parser.add_argument("--smooth-window", type=int, default=5, help="Smoothing window size (default: 5)")
+
     # Episode filtering
     parser.add_argument("--min-episode-length", type=int, default=0, help="Skip episodes shorter than N frames")
     parser.add_argument("--max-episode-length", type=int, default=0, help="Skip episodes longer than N frames")
+    parser.add_argument(
+        "--min-action-variance",
+        type=float,
+        default=0.0,
+        help="Skip episodes with action variance below this threshold (filters stuck/failed demos)",
+    )
+    parser.add_argument(
+        "--trim-idle",
+        action="store_true",
+        help="Trim idle frames from the start and end of episodes",
+    )
+    parser.add_argument(
+        "--trim-idle-threshold",
+        type=float,
+        default=0.001,
+        help="Action delta threshold for idle detection (default: 0.001)",
+    )
 
     # Hub upload
     parser.add_argument("--push-to-hub", action="store_true", help="Upload the augmented dataset to HF Hub")

@@ -11,6 +11,7 @@ from lerobot_augment.augmentations.visual import (
 )
 from lerobot_augment.augmentations.action_noise import ActionNoiseAugmentation
 from lerobot_augment.augmentations.temporal import TemporalSubsampleAugmentation
+from lerobot_augment.augmentations.smoothing import TrajectorySmoothingAugmentation
 from lerobot_augment.augmentations.base import Augmentation
 
 
@@ -46,6 +47,9 @@ def build_augmentation_chain(args: argparse.Namespace, image_keys: list[str]) ->
     if args.action_noise:
         chain.append(ActionNoiseAugmentation(std=args.action_noise_std))
 
+    if args.smooth_trajectory:
+        chain.append(TrajectorySmoothingAugmentation(window_size=args.smooth_window))
+
     return chain
 
 
@@ -57,4 +61,5 @@ __all__ = [
     "RandomErasingAugmentation",
     "ActionNoiseAugmentation",
     "TemporalSubsampleAugmentation",
+    "TrajectorySmoothingAugmentation",
 ]
