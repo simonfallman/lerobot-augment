@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import random
 
+import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -194,6 +195,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
             seed = args.seed + local_idx * 1000 + copy_idx
             random.seed(seed)
             torch.manual_seed(seed)
+            np.random.seed(seed % (2**32))
 
             # Apply augmentation chain
             augmented = frames

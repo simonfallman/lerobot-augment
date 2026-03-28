@@ -18,13 +18,10 @@ DEFAULT_FEATURE_KEYS = {
     "task_index",
 }
 
-# Additional keys that need special handling
-SPECIAL_KEYS = {
-    "next.done",  # Shape mismatch: dataset[idx] returns () but add_frame expects (1,)
-    "next.reward",
-}
+AUTO_MANAGED_KEYS = DEFAULT_FEATURE_KEYS
 
-AUTO_MANAGED_KEYS = DEFAULT_FEATURE_KEYS | SPECIAL_KEYS
+# Keys where dataset[idx] returns scalar but the schema expects shape (1,)
+SCALAR_TO_1D_KEYS = {"next.done", "next.reward"}
 
 
 def get_image_keys(features: dict) -> list[str]:
@@ -62,6 +59,9 @@ def prepare_frame_for_writer(frame: dict, image_keys: list[str]) -> dict:
             else:
                 out[key] = value
         elif isinstance(value, torch.Tensor):
+            # Fix scalar tensors that should be 1D (e.g., next.done)
+            if key in SCALAR_TO_1D_KEYS and value.ndim == 0:
+                value = value.unsqueeze(0)
             out[key] = value.detach().cpu().numpy()
         elif isinstance(value, (int, float, str, bool, np.ndarray)):
             out[key] = value
