@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import random
+import shutil
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -78,6 +80,12 @@ def write_episode(
     """Write an episode's frames to the destination dataset."""
     if not frames:
         return
+    # Pre-create image directories — LeRobot only creates them on frame_index==0,
+    # but parallel video encoding can delete sibling dirs mid-write.
+    ep_idx = dst.episode_buffer["episode_index"] if dst.episode_buffer else dst.meta.total_episodes
+    for key in image_keys:
+        img_dir = dst.root / "images" / key / f"episode-{ep_idx:06d}"
+        img_dir.mkdir(parents=True, exist_ok=True)
     for frame in frames:
         frame_dict = prepare_frame_for_writer(frame, image_keys)
         frame_dict["task"] = task if task is not None else "unknown"
@@ -118,11 +126,18 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print(f"\nCreating output dataset: {args.output_repo_id}")
     robot_type = src.meta.info.get("robot_type", "unknown")
 
+    # Clear stale local cache so LeRobotDataset.create doesn't hit FileExistsError
+    output_cache = Path.home() / ".cache" / "huggingface" / "lerobot" / args.output_repo_id
+    if output_cache.exists():
+        shutil.rmtree(output_cache)
+
     dst = LeRobotDataset.create(
         repo_id=args.output_repo_id,
         fps=src.fps,
         features=output_features,
         robot_type=robot_type,
+        vcodec=args.vcodec,
+        streaming_encoding=args.streaming_encoding,
     )
 
     # Build augmentation chain

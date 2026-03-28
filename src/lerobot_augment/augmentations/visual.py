@@ -40,26 +40,22 @@ class ColorJitterAugmentation(Augmentation):
             return frames
 
         # Sample parameters once for the whole episode
-        brightness_factor = random.uniform(max(0, 1 - self.brightness), 1 + self.brightness)
-        contrast_factor = random.uniform(max(0, 1 - self.contrast), 1 + self.contrast)
-        saturation_factor = random.uniform(max(0, 1 - self.saturation), 1 + self.saturation)
-        hue_factor = random.uniform(-self.hue, self.hue)
+        bf = random.uniform(max(0, 1 - self.brightness), 1 + self.brightness)
+        cf = random.uniform(max(0, 1 - self.contrast), 1 + self.contrast)
+        sf = random.uniform(max(0, 1 - self.saturation), 1 + self.saturation)
+        hf = random.uniform(-self.hue, self.hue)
 
-        result = []
         for frame in frames:
-            new_frame = dict(frame)
             for key in self.image_keys:
-                if key not in new_frame:
+                if key not in frame:
                     continue
-                img = new_frame[key].clone()
-                img = F.adjust_brightness(img, brightness_factor)
-                img = F.adjust_contrast(img, contrast_factor)
-                img = F.adjust_saturation(img, saturation_factor)
-                img = F.adjust_hue(img, hue_factor)
-                img = torch.clamp(img, 0.0, 1.0)
-                new_frame[key] = img
-            result.append(new_frame)
-        return result
+                img = frame[key]
+                img = F.adjust_brightness(img, bf)
+                img = F.adjust_contrast(img, cf)
+                img = F.adjust_saturation(img, sf)
+                img = F.adjust_hue(img, hf)
+                frame[key] = torch.clamp(img, 0.0, 1.0)
+        return frames
 
 
 class GaussianBlurAugmentation(Augmentation):
@@ -86,18 +82,15 @@ class GaussianBlurAugmentation(Augmentation):
             return frames
 
         sigma = random.uniform(self.sigma_min, self.sigma_max)
+        ks = [self.kernel_size, self.kernel_size]
+        ss = [sigma, sigma]
 
-        result = []
         for frame in frames:
-            new_frame = dict(frame)
             for key in self.image_keys:
-                if key not in new_frame:
+                if key not in frame:
                     continue
-                img = new_frame[key].clone()
-                img = F.gaussian_blur(img, [self.kernel_size, self.kernel_size], [sigma, sigma])
-                new_frame[key] = img
-            result.append(new_frame)
-        return result
+                frame[key] = F.gaussian_blur(frame[key], ks, ss)
+        return frames
 
 
 class RandomErasingAugmentation(Augmentation):

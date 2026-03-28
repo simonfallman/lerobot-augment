@@ -102,6 +102,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Action delta threshold for idle detection (default: 0.001)",
     )
 
+    # Encoding
+    parser.add_argument(
+        "--vcodec",
+        type=str,
+        default="libsvtav1",
+        help="Video codec (default: libsvtav1). Use h264_videotoolbox (macOS) or h264 for faster encoding.",
+    )
+    parser.add_argument(
+        "--streaming-encoding",
+        action="store_true",
+        help="Encode video on-the-fly (skips temp PNGs, ~6x faster)",
+    )
+
     # Hub upload
     parser.add_argument("--push-to-hub", action="store_true", help="Upload the augmented dataset to HF Hub")
     parser.add_argument("--private", action="store_true", help="Make the uploaded dataset private")
