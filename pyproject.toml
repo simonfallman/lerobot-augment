@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lerobot-augment"
+version = "0.1.0"
+description = "Dataset augmentation tool for LeRobot v3 datasets"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "lerobot>=0.1.0",
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "tqdm",
+    "huggingface-hub",
+]
+
+[project.scripts]
+lerobot-augment = "lerobot_augment.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
