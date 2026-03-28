@@ -6,21 +6,25 @@ from urllib.parse import quote
 
 import torch
 import numpy as np
-from PIL import Image
 
 
-# Keys that LeRobotDataset manages automatically — skip when building add_frame() dicts.
-# DEFAULT_FEATURES: timestamp, frame_index, episode_index, index, task_index
-# Also skip next.done/next.reward which have shape mismatches between __getitem__ and add_frame.
-AUTO_MANAGED_KEYS = {
+# Keys that LeRobotDataset manages automatically via DEFAULT_FEATURES.
+# These must not be included in the output features dict or frame dicts.
+DEFAULT_FEATURE_KEYS = {
     "episode_index",
     "frame_index",
     "timestamp",
     "index",
     "task_index",
-    "next.done",
+}
+
+# Additional keys that need special handling
+SPECIAL_KEYS = {
+    "next.done",  # Shape mismatch: dataset[idx] returns () but add_frame expects (1,)
     "next.reward",
 }
+
+AUTO_MANAGED_KEYS = DEFAULT_FEATURE_KEYS | SPECIAL_KEYS
 
 
 def get_image_keys(features: dict) -> list[str]:
@@ -31,22 +35,6 @@ def get_image_keys(features: dict) -> list[str]:
         if dtype in ("image", "video"):
             image_keys.append(key)
     return image_keys
-
-
-def chw_to_hwc(tensor: torch.Tensor) -> torch.Tensor:
-    """Convert [C, H, W] tensor to [H, W, C]."""
-    if tensor.ndim == 3 and tensor.shape[0] in (1, 3, 4):
-        return tensor.permute(1, 2, 0)
-    return tensor
-
-
-def tensor_to_pil(tensor: torch.Tensor) -> Image.Image:
-    """Convert a [C, H, W] float tensor in [0, 1] to a PIL Image."""
-    if tensor.dtype in (torch.float32, torch.float64):
-        arr = (tensor.clamp(0, 1) * 255).byte().permute(1, 2, 0).numpy()
-    else:
-        arr = tensor.permute(1, 2, 0).numpy()
-    return Image.fromarray(arr)
 
 
 def prepare_frame_for_writer(frame: dict, image_keys: list[str]) -> dict:
@@ -61,22 +49,20 @@ def prepare_frame_for_writer(frame: dict, image_keys: list[str]) -> dict:
         if key in AUTO_MANAGED_KEYS:
             continue
         if key == "task":
-            # task is handled separately in the pipeline
             continue
         if key in image_keys:
-            # Convert CHW float -> HWC uint8 numpy for add_frame()
             if isinstance(value, torch.Tensor):
                 if value.dtype in (torch.float32, torch.float64):
-                    arr = (value.clamp(0, 1) * 255).byte()
+                    arr = torch.round(value.clamp(0, 1) * 255).to(torch.uint8)
                 else:
                     arr = value
                 # CHW -> HWC
-                arr = arr.permute(1, 2, 0).contiguous().numpy()
+                arr = arr.permute(1, 2, 0).contiguous().cpu().numpy()
                 out[key] = arr
             else:
                 out[key] = value
         elif isinstance(value, torch.Tensor):
-            out[key] = value.numpy()
+            out[key] = value.detach().cpu().numpy()
         elif isinstance(value, (int, float, str, bool, np.ndarray)):
             out[key] = value
     return out

@@ -16,7 +16,7 @@ def compute_action_variance(frames: list[dict]) -> float:
         if "action" in frame:
             a = frame["action"]
             if isinstance(a, torch.Tensor):
-                a = a.numpy()
+                a = a.detach().cpu().numpy()
             actions.append(a)
 
     if len(actions) < 2:
@@ -53,9 +53,9 @@ def trim_idle_frames(frames: list[dict], threshold: float = 0.001) -> list[dict]
             deltas.append(0.0)
             continue
         if isinstance(curr, torch.Tensor):
-            curr = curr.numpy()
+            curr = curr.detach().cpu().numpy()
         if isinstance(prev, torch.Tensor):
-            prev = prev.numpy()
+            prev = prev.detach().cpu().numpy()
         deltas.append(float(np.linalg.norm(curr - prev)))
 
     # Find first and last non-idle frame

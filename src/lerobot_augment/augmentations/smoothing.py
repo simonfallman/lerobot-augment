@@ -37,7 +37,7 @@ class TrajectorySmoothingAugmentation(Augmentation):
             if a is None:
                 return frames  # No actions to smooth
             if isinstance(a, torch.Tensor):
-                actions.append(a.numpy())
+                actions.append(a.detach().cpu().numpy())
             else:
                 actions.append(np.asarray(a))
 

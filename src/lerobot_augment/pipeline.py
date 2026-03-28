@@ -75,16 +75,27 @@ def write_episode(
     task: str | None,
 ) -> None:
     """Write an episode's frames to the destination dataset."""
+    if not frames:
+        return
     for frame in frames:
         frame_dict = prepare_frame_for_writer(frame, image_keys)
-        if task is not None:
-            frame_dict["task"] = task
+        frame_dict["task"] = task if task is not None else "unknown"
         dst.add_frame(frame_dict)
     dst.save_episode()
 
 
 def run_pipeline(args: argparse.Namespace) -> None:
     """Execute the full augmentation pipeline."""
+    # Validate HF auth early if pushing
+    if args.push_to_hub:
+        try:
+            from huggingface_hub import HfApi
+            HfApi().whoami()
+        except Exception:
+            print("Error: --push-to-hub requires HuggingFace authentication.")
+            print("Run: python3 -c \"from huggingface_hub import login; login()\"")
+            return
+
     # Load source — optionally only specific episodes
     if args.episodes is not None:
         print(f"Loading source dataset: {args.source_repo_id} (episodes {args.episodes})")
@@ -211,6 +222,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
         print(f"  Skipped {skipped_variance} episodes (low action variance)")
     if trimmed_count > 0:
         print(f"  Trimmed idle frames from {trimmed_count} episodes")
+
+    if total_written == 0:
+        print("\nWarning: No episodes were written. All episodes may have been filtered out.")
+        print("Check your --min-episode-length, --max-episode-length, and --min-action-variance settings.")
+        return
 
     # Finalize
     print(f"\nFinalizing dataset ({total_written} episodes written)...")
