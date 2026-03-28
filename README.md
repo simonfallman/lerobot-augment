@@ -154,15 +154,47 @@ Run `lerobot-augment --help` for full details. Key arguments:
 
 ## How this was built (AI coding agents)
 
-This tool was built entirely using **Claude Code** (Anthropic's AI coding agent). Here's how:
+This tool was built in a single session using **Claude Code** (Anthropic's AI coding agent). I had no prior experience with LeRobot or robotics datasets — I described the challenge requirements and worked with Claude Code iteratively to go from zero to a working, deployed tool.
 
-1. **Research phase**: Claude Code's web search and exploration agents researched the LeRobot v3 dataset format, the `LeRobotDataset` Python API, and robotics dataset augmentation best practices across academic papers and the LeRobot community
-2. **Architecture design**: Claude Code designed the modular architecture — augmentation base class with episode-level processing, frame format conversion pipeline (CHW float tensors → HWC uint8 numpy), and the filter-then-augment pipeline ordering
-3. **Implementation**: Claude Code wrote all source files, using `inspect.signature` and `inspect.getsource` on the installed LeRobot package to match the actual v3 API exactly (not just documentation)
-4. **Debugging**: When the initial implementation failed validation (wrong image tensor layout, `next.done` shape mismatch, multiprocessing stdin issues), Claude Code diagnosed root causes by reading LeRobot source and fixed each issue
-5. **End-to-end testing**: Claude Code ran the tool against `lerobot/aloha_static_cups_open`, verified video encoding, uploaded to HuggingFace Hub, and validated the visualizer link
+### How Claude Code was used at each stage
 
-The entire tool — from research to working CLI with uploaded demo dataset — was built in a single Claude Code session.
+**1. Research (I didn't know the domain)**
+
+I gave Claude Code the challenge description. It launched parallel exploration agents — one to research the LeRobot v3 dataset format (parquet files, video structure, metadata), another to research which augmentation techniques are most valuable for robotics (color jitter, action noise, trajectory smoothing, etc.). This gave me a crash course in a domain I'd never worked in.
+
+**2. Architecture & planning**
+
+Claude Code entered a planning mode where it designed the full architecture before writing any code — the augmentation base class, episode-level processing pattern, frame format conversion pipeline, and CLI interface. I reviewed and approved the plan before implementation started.
+
+**3. Implementation**
+
+Claude Code wrote all source files. Rather than trusting documentation alone, it used `inspect.signature` and `inspect.getsource` on the installed LeRobot package to match the actual v3 API. It set up the Python environment from scratch (installing `uv`, creating a venv, installing dependencies).
+
+**4. Debugging (the interesting part)**
+
+The first end-to-end test failed — three issues:
+- Image tensors were CHW (channel-first) from `dataset[idx]` but `add_frame()` expected HWC (height-width-channel)
+- `next.done` had shape `()` but the writer expected `(1,)`
+- Python's multiprocessing crashed when running from stdin
+
+Claude Code diagnosed each by reading the LeRobot source code, fixed the frame conversion pipeline, and got a successful run.
+
+**5. Iterative feature development**
+
+After the core pipeline worked, I asked Claude Code to add filtering and trimming features. It implemented action variance filtering (skip episodes where the robot didn't move), idle frame trimming (cut dead time), and trajectory smoothing — all wired into the CLI with new flags.
+
+**6. Testing across datasets**
+
+We tested on two completely different robot setups:
+- ALOHA robot (4 cameras, 14-DOF) — `lerobot/aloha_static_cups_open`
+- xArm robot (1 camera, different action space) — `lerobot/xarm_lift_medium`
+
+Both worked without any code changes, proving the tool is general-purpose.
+
+### What I did vs what Claude Code did
+
+- **Me**: Described the challenge, made decisions (CLI vs notebook, which features to prioritize, when to ship), reviewed output in the visualizer, noticed issues (augmentations not visible enough, missing random erasing), asked for explanations when I didn't understand something
+- **Claude Code**: All research, architecture design, code writing, environment setup, debugging, testing, git operations, and HuggingFace uploads
 
 ## License
 
