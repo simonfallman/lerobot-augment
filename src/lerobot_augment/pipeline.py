@@ -212,8 +212,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
             torch.manual_seed(seed)
             np.random.seed(seed % (2**32))
 
-            # Apply augmentation chain
-            augmented = frames
+            # Re-read frames from source (faster than cloning 1.5GB of tensors)
+            augmented = read_episode_frames(src, local_idx)
             for aug in augmentations:
                 augmented = aug(augmented)
 
